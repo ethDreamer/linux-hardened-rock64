@@ -19,7 +19,14 @@
 #define RTL821x_INER				0x12
 #define RTL8211B_INER_INIT			0x6400
 #define RTL8211E_INER_LINK_STATUS		BIT(10)
+#define RTL8211E_INER_ANEG_COMPLETED		BIT(11)
+#define RTL8211E_INER_PAGE_RECEIVED		BIT(12)
+#define RTL8211E_INER_ANEG_ERROR		BIT(15)
 #define RTL8211F_INER_LINK_STATUS		BIT(4)
+#define RTL8211F_INER_PHY_REGISTER_ACCESSIBLE	BIT(5)
+#define RTL8211F_INER_WOL_PME			BIT(7)
+#define RTL8211F_INER_ALDPS_STATE_CHANGE	BIT(9)
+#define RTL8211F_INER_JABBER			BIT(10)
 
 #define RTL821x_INSR				0x13
 
@@ -35,6 +42,9 @@
 
 #define RTL8201F_ISR				0x1e
 #define RTL8201F_IER				0x13
+
+#define RTL8211F_INTBCR				0x16
+#define RTL8211F_INTBCR_INTB_PMEB		BIT(5)
 
 #define RTL8366RB_POWER_SAVE			0x15
 #define RTL8366RB_POWER_SAVE_ON			BIT(12)
@@ -120,12 +130,32 @@ static int rtl8211e_config_intr(struct phy_device *phydev)
 
 static int rtl8211f_config_intr(struct phy_device *phydev)
 {
+	int err;
 	u16 val;
 
-	if (phydev->interrupts == PHY_INTERRUPT_ENABLED)
+	if (phydev->interrupts == PHY_INTERRUPT_ENABLED) {
+		/*
+		 * The interrupt pin has two functions:
+		 * 0: INTB: it acts as interrupt pin which can be configured
+		 *    through RTL821x_INER and the status can be read through
+		 *    RTL8211F_INSR
+		 * 1: PMEB: a special "Power Management Event" mode for
+		 *    Wake-on-LAN operation (with support for a "pulse low"
+		 *    wave format). Interrupts configured through RTL821x_INER
+		 *    will not work in this mode
+		 *
+		 * select INTB mode in the "INTB pin control" register to
+		 * ensure that the interrupt pin is in the correct mode.
+		 */
+		err = phy_modify_paged(phydev, 0xd40, RTL8211F_INTBCR,
+					      RTL8211F_INTBCR_INTB_PMEB, 0);
+		if (err)
+			return err;
+
 		val = RTL8211F_INER_LINK_STATUS;
-	else
+	} else {
 		val = 0;
+	}
 
 	return phy_write_paged(phydev, 0xa42, RTL821x_INER, val);
 }

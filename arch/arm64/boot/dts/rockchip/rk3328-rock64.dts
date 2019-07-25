@@ -11,7 +11,34 @@
 	compatible = "pine64,rock64", "rockchip,rk3328";
 
 	chosen {
+		bootargs = "earlycon=uart8250,mmio32,0xff130000";
 		stdout-path = "serial2:1500000n8";
+	};
+
+	leds {
+		compatible = "gpio-leds";
+
+		standby-led {
+			linux,default-trigger = "disk-activity";
+			gpios = <&rk805 0 GPIO_ACTIVE_LOW>;
+			default-state = "on";
+		};
+
+		power-led {
+			gpios = <&rk805 1 GPIO_ACTIVE_LOW>;
+			default-state = "on";
+		};
+	};
+
+	leds {
+		compatible = "gpio-leds";
+
+		usb-switch {
+			linux,default-trigger = "none";
+			gpios = <&gpio0 2 1>;
+			mode = <0x23>;
+			default-state = "on";
+		};
 	};
 
 	gmac_clkin: external-gmac-clock {
@@ -46,7 +73,8 @@
 
 	vcc_host1_5v: vcc_otg_5v: vcc-host1-5v-regulator {
 		compatible = "regulator-fixed";
-		gpio = <&gpio0 RK_PA2 GPIO_ACTIVE_LOW>;
+		enable-active-high;
+		gpio = <&gpio0 RK_PA2 GPIO_ACTIVE_HIGH>;
 		pinctrl-names = "default";
 		pinctrl-0 = <&usb20_host_drv>;
 		regulator-name = "vcc_host1_5v";
@@ -88,7 +116,8 @@
 	sound {
 		compatible = "audio-graph-card";
 		label = "rockchip,rk3328";
-		dais = <&i2s1_p0
+		dais = <&i2s0_p0
+			&i2s1_p0
 			&spdif_p0>;
 	};
 
@@ -101,6 +130,13 @@
 				remote-endpoint = <&spdif_p0_0>;
 			};
 		};
+	};
+
+	vcc_phy: vcc-phy-regulator {
+		compatible = "regulator-fixed";
+		regulator-name = "vcc_phy";
+		regulator-always-on;
+		regulator-boot-on;
 	};
 };
 
@@ -131,26 +167,30 @@
 };
 
 &emmc {
+	max-frequency = <200000000>;
 	bus-width = <8>;
 	cap-mmc-highspeed;
 	mmc-hs200-1_8v;
 	non-removable;
+	num-slots = <1>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&emmc_clk &emmc_cmd &emmc_bus8>;
-	vmmc-supply = <&vcc_io>;
-	vqmmc-supply = <&vcc18_emmc>;
 	status = "okay";
+	supports-emmc;
+	clocks = <&cru HCLK_EMMC>, <&cru SCLK_EMMC>,
+	         <&cru SCLK_EMMC_DRV>, <&cru SCLK_EMMC_SAMPLE>;
+	clock-names = "biu", "ciu", "ciu-drv", "ciu-sample";
 };
 
 &gmac2io {
 	assigned-clocks = <&cru SCLK_MAC2IO>, <&cru SCLK_MAC2IO_EXT>;
 	assigned-clock-parents = <&gmac_clkin>, <&gmac_clkin>;
 	clock_in_out = "input";
-	phy-supply = <&vcc_io>;
+	phy-supply = <&vcc_phy>;
 	phy-mode = "rgmii";
 	pinctrl-names = "default";
 	pinctrl-0 = <&rgmiim1_pins>;
-	snps,force_thresh_dma_mode;
+	rockchip,bugged_tx_coe;
 	snps,reset-gpio = <&gpio1 RK_PC2 GPIO_ACTIVE_LOW>;
 	snps,reset-active-low;
 	snps,reset-delays-us = <0 10000 50000>;
@@ -161,10 +201,26 @@
 
 &hdmi {
 	status = "okay";
+
+	port@0 {
+		hdmi_p0_0: endpoint {
+			remote-endpoint = <&i2s0_p0_0>;
+		};
+	};
 };
 
 &hdmiphy {
 	status = "okay";
+};
+
+&gmac2phy {
+	phy-supply = <&vcc_phy>;
+	clock_in_out = "output";
+	assigned-clocks = <&cru SCLK_MAC2PHY_SRC>;
+	assigned-clock-rate = <50000000>;
+	assigned-clocks = <&cru SCLK_MAC2PHY>;
+	assigned-clock-parents = <&cru SCLK_MAC2PHY_SRC>;
+	status = "disabled";
 };
 
 &i2c1 {
@@ -196,10 +252,12 @@
 				regulator-name = "vdd_logic";
 				regulator-min-microvolt = <712500>;
 				regulator-max-microvolt = <1450000>;
+				regulator-initial-mode = <0x1>;
 				regulator-ramp-delay = <12500>;
 				regulator-always-on;
 				regulator-boot-on;
 				regulator-state-mem {
+					regulator-mode = <0x2>;
 					regulator-on-in-suspend;
 					regulator-suspend-microvolt = <1000000>;
 				};
@@ -209,10 +267,12 @@
 				regulator-name = "vdd_arm";
 				regulator-min-microvolt = <712500>;
 				regulator-max-microvolt = <1450000>;
+				regulator-initial-mode = <0x1>;
 				regulator-ramp-delay = <12500>;
 				regulator-always-on;
 				regulator-boot-on;
 				regulator-state-mem {
+					regulator-mode = <0x2>;
 					regulator-on-in-suspend;
 					regulator-suspend-microvolt = <950000>;
 				};
@@ -220,9 +280,11 @@
 
 			vcc_ddr: DCDC_REG3 {
 				regulator-name = "vcc_ddr";
+				regulator-initial-mode = <0x1>;
 				regulator-always-on;
 				regulator-boot-on;
 				regulator-state-mem {
+					regulator-mode = <0x2>;
 					regulator-on-in-suspend;
 				};
 			};
@@ -231,9 +293,11 @@
 				regulator-name = "vcc_io";
 				regulator-min-microvolt = <3300000>;
 				regulator-max-microvolt = <3300000>;
+				regulator-initial-mode = <0x1>;
 				regulator-always-on;
 				regulator-boot-on;
 				regulator-state-mem {
+					regulator-mode = <0x2>;
 					regulator-on-in-suspend;
 					regulator-suspend-microvolt = <3300000>;
 				};
@@ -274,6 +338,18 @@
 					regulator-suspend-microvolt = <1000000>;
 				};
 			};
+		};
+	};
+};
+
+&i2s0 {
+	status = "okay";
+
+	i2s0_p0: port {
+		i2s0_p0_0: endpoint {
+			dai-format = "i2s";
+			mclk-fs = <256>;
+			remote-endpoint = <&hdmi_p0_0>;
 		};
 	};
 };
@@ -332,11 +408,15 @@
 	bus-width = <4>;
 	cap-mmc-highspeed;
 	cap-sd-highspeed;
+	cd-gpios = <&gpio1 RK_PA5 GPIO_ACTIVE_LOW>;
 	disable-wp;
 	max-frequency = <150000000>;
+	num-slots = <1>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&sdmmc0_clk &sdmmc0_cmd &sdmmc0_dectn &sdmmc0_bus4>;
+	supports-sd;
 	vmmc-supply = <&vcc_sd>;
+	vqmmc-supply = <&vcc_sd>;
 	status = "okay";
 };
 
@@ -355,11 +435,23 @@
 	status = "okay";
 
 	spiflash@0 {
-		compatible = "jedec,spi-nor";
+		compatible = "gigadevice,gd25q128", "jedec,spi-nor";
 		reg = <0>;
+		m25p,fast-read;
 
 		/* maximum speed for Rockchip SPI */
 		spi-max-frequency = <50000000>;
+
+		partitions {
+			compatible = "fixed-partitions";
+			#address-cells = <1>;
+			#size-cells = <1>;
+
+			loader@8000 {
+				label = "loader";
+				reg = <0x8000 0x3F0000>;
+			};
+		};
 	};
 };
 
@@ -375,14 +467,14 @@
 
 &u2phy {
 	status = "okay";
+};
 
-	u2phy_host: host-port {
-		status = "okay";
-	};
+&u2phy_host {
+	status = "okay";
+};
 
-	u2phy_otg: otg-port {
-		status = "okay";
-	};
+&u2phy_otg {
+	status = "okay";
 };
 
 &usb20_otg {
@@ -404,4 +496,43 @@
 
 &vop_mmu {
 	status = "okay";
+};
+
+&usbdrd3 {
+	status = "okay";
+};
+
+&usbdrd_dwc3 {
+	dr_mode = "host";
+	status = "okay";
+};
+
+&spi0 {
+	status = "okay";
+
+	/* SPI DMA does not work currently */
+	/delete-property/ dmas;
+	/delete-property/ #dma-cells;
+	/delete-property/ dma-names;
+
+	 spi-flash@0 {
+		#address-cells = <0x1>;
+		#size-cells = <1>;
+		compatible = "jedec,spi-nor";
+		reg = <0x0>;
+		spi-max-frequency = <25000000>;
+		status = "okay";
+		m25p,fast-read;
+
+		partitions {
+			compatible = "fixed-partitions";
+			#address-cells = <1>;
+			#size-cells = <1>;
+
+			loader@8000 {
+				label = "loader";
+				reg = <0x8000 0x3F0000>;
+			};
+		};
+	};
 };
